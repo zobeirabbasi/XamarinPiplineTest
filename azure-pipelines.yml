@@ -1,32 +1,52 @@
-# Xamarin.iOS
-# Build a Xamarin.iOS project.
-# Add steps that install certificates, test, sign, and distribute an app, save build artifacts, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/xamarin
-
 trigger:
-- master
+  branches:
+    include:
+      - master
 
 pool:
   vmImage: 'macos-latest'
 
+variables:
+  buildConfiguration: 'Release'
+
 steps:
-# To manually select a Xamarin SDK version on the Microsoft-hosted macOS agent,
-# configure this task with the *Mono* version that is associated with the
-# Xamarin SDK version that you need, and set the "enabled" property to true.
-# See https://go.microsoft.com/fwlink/?linkid=871629
-- script: sudo $AGENT_HOMEDIRECTORY/scripts/select-xamarin-sdk.sh 5_12_0
-  displayName: 'Select the Xamarin SDK version'
-  enabled: false
+  # Step 1: Checkout Code
+  - checkout: self
 
-- task: NuGetToolInstaller@1
+  # Step 2: Install Dependencies
+  - script: |
+      brew update
+      brew install mono
+      brew install --cask xamarin-android
+      brew install --cask xamarin-ios
+    displayName: 'Install Dependencies'
 
-- task: NuGetCommand@2
-  inputs:
-    restoreSolution: '**/*.sln'
+  # Step 3: Restore NuGet Packages with MSBuild
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
+    inputs:
+      solution: '**/*.sln'
+      msbuildArguments: '/restore'
 
-- task: XamariniOS@2
-  inputs:
-    solutionFile: '**/*.sln'
-    configuration: 'Release'
-    buildForSimulator: true
-    packageApp: false
+  # Step 4: Build Android Project
+  - task: MSBuild@1
+    displayName: 'Build Xamarin.Android'
+    inputs:
+      solution: '**/*Droid*.csproj'
+      configuration: $(buildConfiguration)
+      msbuildArguments: '/t:SignAndroidPackage'
+
+  # Step 5: Build iOS Project
+  - task: MSBuild@1
+    displayName: 'Build Xamarin.iOS'
+    inputs:
+      solution: '**/*.iOS.csproj'
+      configuration: $(buildConfiguration)
+      msbuildArguments: '/t:Build'
+
+  # Step 6: Publish Build Artifacts
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Build Artifacts'
+    inputs:
+      pathtoPublish: '**/bin/Release'
+      artifactName: 'drop'
